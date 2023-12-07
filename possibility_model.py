@@ -20,12 +20,12 @@ class PossibilityModel:
                 raw_data_addr = input("Please enter the address of the raw data: ")
                 if raw_data_addr == "":
                     raw_data_addr = '/data/shared/incas/Israel_Hamas/data/challenge_problem_two_21NOV.jsonl'
-                self.train(raw_data_addr)
+                self.build_df(raw_data_addr)
             else:
-                print("Could use train() to get data")
+                print("Could use build_df() to get data")
                 
 
-    def train(self, dataset_addr):
+    def build_df(self, dataset_addr):
         """
         Get the data from the raw jsonl database.
         """
