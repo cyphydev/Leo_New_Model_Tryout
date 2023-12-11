@@ -12,66 +12,53 @@ class PossibilityModel:
         self.pandas_dataset = None
         self.verbose = True
 
-        if pickle_addr is not None:
-            self = pickle.load(pickle_addr)
-        else:
-            go_get_date = input("Do you want to go get the data? (y/n)")
-            if go_get_date == 'y':
-                raw_data_addr = input("Please enter the address of the raw data: ")
-                if raw_data_addr == "":
-                    raw_data_addr = '/data/shared/incas/Israel_Hamas/data/challenge_problem_two_21NOV.jsonl'
-                self.build_df(raw_data_addr)
-            else:
-                print("Could use build_df() to get data")
-                
 
-    def build_df(self, dataset_addr):
+    def build_df_from_pickle(self, pickle_addr):
         """
-        Get the data from the raw jsonl database.
+        Load the model from a pickle file.
         """
-        # Open the JSONL file in read mode
-        with jsonlines.open(dataset_addr) as reader:
-            # Initialize an empty list to store the JSON objects
-            data = []
-            # Iterate over each line in the file
-            for line in tqdm(reader, desc='Loading data from jsonl file'):
-                # Process each line as a JSON object
-                data.append(line)
-            # Create a pandas DataFrame from the list of JSON objects
-            df = pd.DataFrame(data)
-            self.start_time = df['timePublished'].min()
-            self.end_time = df['timePublished'].max()
-            df_author = df[df['author'].notnull()]
-            df_author_timeseries = df_author.groupby('author')['timePublished'].agg(list).reset_index()
-            df_author_timeseries['list_length'] = df_author_timeseries['timePublished'].apply(len)
-            df_author_timeseries = df_author_timeseries.sort_values(by='list_length', ascending=False)
-            df_author_timeseries = df_author_timeseries.drop('list_length', axis=1)
+        self.pandas_dataset = self.process_data(pd.read_pickle(pickle_addr))
+
+    
+    
+    def process_data(self, data):
+        """
+        Process the data to get the pandas dataframe.
+        """
+        df = pd.DataFrame(data)
+        self.start_time = df['timePublished'].min()
+        self.end_time = df['timePublished'].max()
+        df_author = df[df['author'].notnull()]
+        df_author_timeseries = df_author.groupby('author')['timePublished'].agg(list).reset_index()
+        df_author_timeseries['list_length'] = df_author_timeseries['timePublished'].apply(len)
+        df_author_timeseries = df_author_timeseries.sort_values(by='list_length', ascending=False)
+        df_author_timeseries = df_author_timeseries.drop('list_length', axis=1)
+        
+
+        # convert the timestamp to days
+        def cleanTimeHelper(lst):
+            for i in range(len(lst)):
+                lst[i] -= lst[i] % (24 * 60 * 60 * 1000)
+
+            dic = {}
+            for i in lst:
+                if i in dic:
+                    dic[i] += 1
+                else:
+                    dic[i] = 1
             
+            date = []
+            count = []
 
-            # convert the timestamp to days
-            def cleanTimeHelper(lst):
-                for i in range(len(lst)):
-                    lst[i] -= lst[i] % (24 * 60 * 60 * 1000)
+            seq = sorted(dic.keys())
+            for key in seq:
+                date.append(key)
+                count.append(dic[key])
 
-                dic = {}
-                for i in lst:
-                    if i in dic:
-                        dic[i] += 1
-                    else:
-                        dic[i] = 1
-                
-                date = []
-                count = []
+            return [date, count]
 
-                seq = sorted(dic.keys())
-                for key in seq:
-                    date.append(key)
-                    count.append(dic[key])
-
-                return [date, count]
-
-                
-            df_author_timeseries['dayPublished'] = df_author_timeseries['timePublished'].apply(cleanTimeHelper)
+            
+        df_author_timeseries['dayPublished'] = df_author_timeseries['timePublished'].apply(cleanTimeHelper)
 
             
         self.pandas_dataset = df_author_timeseries
