@@ -3,7 +3,7 @@ import jsonlines
 from tqdm import tqdm
 import pickle
 import bisect
-from possibility_model import PossibilityModel
+from response_rate_model.possibility_model import PossibilityModel
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
