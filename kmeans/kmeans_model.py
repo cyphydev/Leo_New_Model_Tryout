@@ -43,7 +43,16 @@ class KMeansModel:
     def fit(self, n_clusters=None):
         # Assuming X is already provided in the correct format and just needs scaling
         if n_clusters is None:
-            n_clusters, sse = self.elbow_method(self.X_scaled)
+            inputt = input('Enter number of clusters \nIf you want to specify the number, type a integer. \n Otherwise, press Enter: ')
+            if inputt.isdigit():
+                n_clusters = int(inputt)
+            else:
+                print('Running elbow method to find optimal number of clusters')
+                show_plot = False
+                inputt = input('Show elbow plot? (y/n): ')
+                if inputt == 'y':
+                    show_plot = True
+                n_clusters, sse = self.elbow_method(show_plot=show_plot)
         kmeans = KMeans(n_clusters=n_clusters, random_state=self.random_state)
         kmeans.fit(self.X_scaled)
         self.kmeans = kmeans
