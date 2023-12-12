@@ -3,6 +3,18 @@ import jsonlines
 from tqdm import tqdm
 import pickle
 import bisect
+from possibility_model import PossibilityModel
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import OneHotEncoder
+import scipy.stats as stats
+
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+
+RESPONSE_IN_DAYS = 14
 
 class PossibilityModel:
 
@@ -11,6 +23,9 @@ class PossibilityModel:
         self.model_ready = False
         self.pandas_dataset = None
         self.verbose = True
+        self.maxium_timestamp = None
+        self.minium_timestamp = None
+
 
 
     def build_df_from_pickle(self, pickle_addr):
@@ -19,47 +34,65 @@ class PossibilityModel:
         """
         self.pandas_dataset = self.process_data(pd.read_pickle(pickle_addr))
 
+
+    def calculate_rate_respond_in_2_weeks(self, timestamps, current_time=None):
+
+        if current_time is None:
+            current_time = self.maxium_timestamp
+    
+        # Recency: Time difference from the last message to the current time
+
+        latest_message = timestamps[-1]
+        target = (RESPONSE_IN_DAYS * 60 * 60 * 24) + current_time - latest_message
+
+        # Consistency: Standard deviation of time intervals between messages
+        if len(timestamps) > 2:
+            intervals = [(timestamps[i] - timestamps[i-1]) for i in range(1, len(timestamps))]
+            std = np.std(intervals)
+            mean = np.mean(intervals)
+            probability = stats.norm.cdf(target, mean, std) - stats.norm.cdf(0, mean, std)
+            return probability
+        else:
+            return len(timestamps) * RESPONSE_IN_DAYS / ((self.maxium_timestamp - self.minium_timestamp) / (60 * 60 * 24))
+
     
     
-    def process_data(self, data):
+    def process_data(self, df):
         """
         Process the data to get the pandas dataframe.
         """
-        df = pd.DataFrame(data)
-        self.start_time = df['timePublished'].min()
-        self.end_time = df['timePublished'].max()
-        df_author = df[df['author'].notnull()]
-        df_author_timeseries = df_author.groupby('author')['timePublished'].agg(list).reset_index()
-        df_author_timeseries['list_length'] = df_author_timeseries['timePublished'].apply(len)
-        df_author_timeseries = df_author_timeseries.sort_values(by='list_length', ascending=False)
-        df_author_timeseries = df_author_timeseries.drop('list_length', axis=1)
-        
+        self.maxium_timestamp = max(df["timestamp"])
+        self.minium_timestamp = min(df["timestamp"])
+        # Assuming df is your DataFrame and 'author' is the column you want to group by
+        cols_to_exclude = ['author', 'msg', 'timestamp', 'contentText']
+        cols_to_average = [col for col in df.columns if col not in cols_to_exclude]
 
+        # Define the aggregation dictionary.
+        agg_dict = {col: ['mean', 'var'] for col in cols_to_average}
+        agg_dict.update({col: list for col in ['msg', 'timestamp', 'contentText']})
+
+        # Group by 'author' and apply the aggregation.
+        df_grouped = df.groupby("author").agg(agg_dict).reset_index()
         # convert the timestamp to days
-        def cleanTimeHelper(lst):
-            for i in range(len(lst)):
-                lst[i] -= lst[i] % (24 * 60 * 60 * 1000)
 
-            dic = {}
-            for i in lst:
-                if i in dic:
-                    dic[i] += 1
-                else:
-                    dic[i] = 1
-            
-            date = []
-            count = []
+        df_grouped["response_rate"] = df_grouped[("timestamp", "list")].apply(self.calculate_rate_respond_in_2_weeks)
+        data = df_grouped
+        sett = set()
 
-            seq = sorted(dic.keys())
-            for key in seq:
-                date.append(key)
-                count.append(dic[key])
+        for col, subcol in data.columns:
+            if subcol != "":
+                sett.add(col)
+                data[f"{col}-{subcol}"] = data[col][subcol]
 
-            return [date, count]
+        for col in sett:
+            del data[col]
 
-            
-        df_author_timeseries['dayPublished'] = df_author_timeseries['timePublished'].apply(cleanTimeHelper)
+        data["total_num_msg"] = data["msg-list"].apply(lambda x: len(x))
 
+        data.drop(columns=["msg-list", "timestamp-list", "contentText-list"], inplace=True)
+
+        df_more_than_5 = df_grouped[df_grouped["total_num_msg"] > 5]
+        df_more_than_5.columns = df_more_than_5.columns.get_level_values(0)#.difference(['author', 'response_rate'])
             
         self.pandas_dataset = df_author_timeseries
         self.model_ready = True
